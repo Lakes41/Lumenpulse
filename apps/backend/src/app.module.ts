@@ -4,6 +4,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { TestExceptionController } from './test-exception.controller';
+import { AuthModule } from './auth/auth.module';
+import { UsersModule } from './users/users.module';
 
 @Module({
   controllers: [AppController, TestExceptionController],
@@ -23,12 +25,14 @@ import { TestExceptionController } from './test-exception.controller';
         password: configService.get<string>('DB_PASSWORD'),
         database: configService.get<string>('DB_DATABASE'),
         entities: [__dirname + '/**/*.entity{.ts,.js}'],
-        synchronize: false, // Always false for production, and recommended false when using migrations
+        synchronize: true, // Always false for production, and recommended false when using migrations
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: true,
       }),
       inject: [ConfigService],
     }),
+    AuthModule,
+    UsersModule,
   ],
 })
-export class AppModule {}
+export class AppModule { }

@@ -6,6 +6,9 @@ import { GlobalExceptionFilter } from './filters/global-exception.filter';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
+  // Register the global exception filter
+  app.useGlobalFilters(new GlobalExceptionFilter());
+
   // Swagger Configuration
   const config = new DocumentBuilder()
     .setTitle('LumenPulse API')
@@ -24,9 +27,5 @@ async function bootstrap() {
   await app.listen(port);
   console.log(`Application is running on: http://localhost:${port}`);
   console.log(`Swagger docs available at: http://localhost:${port}/api/docs`);
-  // Register the global exception filter
-  app.useGlobalFilters(new GlobalExceptionFilter());
-
-  await app.listen(process.env.PORT ?? 3000);
 }
 void bootstrap();
