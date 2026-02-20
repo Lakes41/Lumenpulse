@@ -63,7 +63,7 @@ impl ContributorRegistryContract {
         env: Env,
         admin: Address,
         contributor_address: Address,
-        new_score: u64,
+        delta: i64,
     ) -> Result<(), ContributorError> {
         let stored_admin: Address = env
             .storage()
@@ -79,12 +79,34 @@ impl ContributorRegistryContract {
             .persistent()
             .get(&DataKey::Contributor(contributor_address.clone()))
             .ok_or(ContributorError::ContributorNotFound)?;
+
+        let new_score = if delta > 0 {
+            contributor
+                .reputation_score
+                .checked_add(delta as u64)
+                .ok_or(ContributorError::ReputationOverflow)?
+        } else {
+            let new_delta = match delta.checked_abs() {
+                Some(new_delta) => new_delta as u64,
+                None => 0,
+            };
+            contributor
+                .reputation_score
+                .checked_sub(new_delta)
+                .unwrap_or_default()
+        };
         contributor.reputation_score = new_score;
         env.storage()
             .persistent()
             .set(&DataKey::Contributor(contributor_address), &contributor);
 
         Ok(())
+    }
+
+    /// Get contributor reputation
+    pub fn get_reputation(env: Env, contributor: Address) -> Result<u64, ContributorError> {
+        let contributor_data: ContributorData = Self::get_contributor(env, contributor)?;
+        Ok(contributor_data.reputation_score)
     }
 
     /// Get contributor profile data
