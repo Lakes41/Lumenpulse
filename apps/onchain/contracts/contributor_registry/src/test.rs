@@ -128,12 +128,12 @@ fn test_update_reputation() {
     client.register_contributor(&contributor, &github_handle);
 
     // Update reputation
-    let new_score: u64 = 100;
+    let new_score: i64 = 100;
     client.update_reputation(&admin, &contributor, &new_score);
 
     // Verify reputation updated
     let data = client.get_contributor(&contributor);
-    assert_eq!(data.reputation_score, new_score);
+    assert_eq!(data.reputation_score, new_score as u64);
 }
 
 #[test]
@@ -248,14 +248,93 @@ fn test_reputation_can_be_updated_multiple_times() {
     assert_eq!(client.get_contributor(&contributor).reputation_score, 10);
 
     client.update_reputation(&admin, &contributor, &50);
-    assert_eq!(client.get_contributor(&contributor).reputation_score, 50);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 60);
 
     client.update_reputation(&admin, &contributor, &100);
-    assert_eq!(client.get_contributor(&contributor).reputation_score, 100);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 160);
 
     // Can also decrease reputation
     client.update_reputation(&admin, &contributor, &25);
-    assert_eq!(client.get_contributor(&contributor).reputation_score, 25);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 185);
+}
+
+#[test]
+fn test_reputation_can_be_updated_multiple_times_with_negative() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, contributor) = setup_test(&env);
+
+    // Initialize contract
+    client.initialize(&admin);
+
+    // Register contributor
+    let github_handle = String::from_str(&env, "testuser");
+    client.register_contributor(&contributor, &github_handle);
+
+    // Update reputation multiple times
+    client.update_reputation(&admin, &contributor, &10);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 10);
+
+    client.update_reputation(&admin, &contributor, &50);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 60);
+
+    client.update_reputation(&admin, &contributor, &100);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 160);
+
+    // Can also decrease reputation
+    client.update_reputation(&admin, &contributor, &-25);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 135);
+}
+
+#[test]
+fn test_reputation_can_be_updated_multiple_times_with_negative_check_under_flow() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, contributor) = setup_test(&env);
+
+    // Initialize contract
+    client.initialize(&admin);
+
+    // Register contributor
+    let github_handle = String::from_str(&env, "testuser");
+    client.register_contributor(&contributor, &github_handle);
+
+    // Update reputation multiple times
+    client.update_reputation(&admin, &contributor, &10);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 10);
+
+    client.update_reputation(&admin, &contributor, &50);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 60);
+
+    client.update_reputation(&admin, &contributor, &-100);
+    assert_eq!(client.get_contributor(&contributor).reputation_score, 0);
+}
+
+#[test]
+fn test_reputation_get_reputation() {
+    let env = Env::default();
+    env.mock_all_auths();
+
+    let (client, admin, contributor) = setup_test(&env);
+
+    // Initialize contract
+    client.initialize(&admin);
+
+    // Register contributor
+    let github_handle = String::from_str(&env, "testuser");
+    client.register_contributor(&contributor, &github_handle);
+
+    // Update reputation multiple times
+    client.update_reputation(&admin, &contributor, &10);
+    assert_eq!(client.get_reputation(&contributor), 10);
+
+    client.update_reputation(&admin, &contributor, &-20);
+    assert_eq!(client.get_reputation(&contributor), 0);
+
+    client.update_reputation(&admin, &contributor, &50);
+    assert_eq!(client.get_reputation(&contributor), 50);
 }
 
 // ---------------------------------------------------------------------------

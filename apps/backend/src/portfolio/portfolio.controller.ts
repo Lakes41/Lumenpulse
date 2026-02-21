@@ -14,6 +14,7 @@ import {
   GetPortfolioHistoryDto,
   PortfolioHistoryResponseDto,
 } from './dto/portfolio-snapshot.dto';
+import { PortfolioPerformanceResponseDto } from './dto/portfolio-performance.dto';
 
 @Controller('portfolio')
 @UseGuards(JwtAuthGuard)
@@ -72,5 +73,18 @@ export class PortfolioController {
       success: result.success,
       failed: result.failed,
     };
+  }
+
+  /**
+   * GET /portfolio/performance
+   * Returns portfolio performance metrics (24h, 7d, 30d) for the authenticated user
+   */
+  @Get('performance')
+  async getPortfolioPerformance(
+    @Request() req: any,
+  ): Promise<PortfolioPerformanceResponseDto> {
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-member-access
+    const userId = req.user.sub as string;
+    return this.portfolioService.getPortfolioPerformance(userId);
   }
 }

@@ -10,6 +10,8 @@ import {
   PortfolioHistoryResponseDto,
   PortfolioSnapshotDto,
 } from './dto/portfolio-snapshot.dto';
+import { PortfolioPerformanceResponseDto } from './dto/portfolio-performance.dto';
+import { calculatePortfolioPerformance } from './utils/portfolio-performance.utils';
 
 @Injectable()
 export class PortfolioService {
@@ -194,5 +196,46 @@ export class PortfolioService {
     }
 
     return { success: successCount, failed: failCount };
+  }
+
+  /**
+   * Get portfolio performance metrics for a user
+   * Calculates 24h, 7d, and 30d performance based on historical snapshots
+   */
+  async getPortfolioPerformance(
+    userId: string,
+  ): Promise<PortfolioPerformanceResponseDto> {
+    this.logger.log(`Calculating portfolio performance for user ${userId}`);
+
+    // Get user to access their Stellar public key
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    if (!user) {
+      throw new NotFoundException(`User ${userId} not found`);
+    }
+
+    // Get current portfolio value by creating a fresh snapshot
+    const currentSnapshot = await this.createSnapshot(userId);
+    const currentValueUsd = parseFloat(currentSnapshot.totalValueUsd);
+
+    // Get all historical snapshots for the user (last 30 days worth)
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+    const historicalSnapshots = await this.snapshotRepository.find({
+      where: {
+        userId,
+        createdAt: {
+          $gte: thirtyDaysAgo,
+        } as unknown as Date,
+      },
+      order: { createdAt: 'DESC' },
+    });
+
+    // Calculate performance using pure function
+    return calculatePortfolioPerformance(
+      userId,
+      currentValueUsd,
+      historicalSnapshots,
+    );
   }
 }
