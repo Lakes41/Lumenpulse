@@ -1,20 +1,23 @@
 import { Tabs } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function TabLayout() {
+  const { colors } = useTheme();
+
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#db74cf',
-        tabBarInactiveTintColor: '#ffffff',
+        tabBarActiveTintColor: colors.tabBarActive,
+        tabBarInactiveTintColor: colors.tabBarInactive,
         tabBarStyle: {
-          backgroundColor: '#0a0a0a',
-          borderTopColor: 'rgba(219, 116, 207, 0.2)',
+          backgroundColor: colors.tabBar,
+          borderTopColor: colors.tabBarBorder,
         },
         headerStyle: {
-          backgroundColor: '#0a0a0a',
+          backgroundColor: colors.background,
         },
-        headerTintColor: '#ffffff',
+        headerTintColor: colors.text,
       }}
     >
       <Tabs.Screen
@@ -28,7 +31,6 @@ export default function TabLayout() {
         }}
       />
 
-      {/* ✅ NEW PORTFOLIO TAB */}
       <Tabs.Screen
         name="portfolio"
         options={{

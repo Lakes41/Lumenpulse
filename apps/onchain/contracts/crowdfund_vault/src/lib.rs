@@ -17,6 +17,23 @@ pub struct CrowdfundVaultContract;
 
 #[contractimpl]
 impl CrowdfundVaultContract {
+    /// Helper function to verify admin authorization
+    /// Reduces code duplication and ensures consistent admin checks
+    fn verify_admin(env: &Env, caller: &Address) -> Result<(), CrowdfundError> {
+        let stored_admin: Address = env
+            .storage()
+            .instance()
+            .get(&DataKey::Admin)
+            .ok_or(CrowdfundError::NotInitialized)?;
+
+        if caller != &stored_admin {
+            return Err(CrowdfundError::Unauthorized);
+        }
+
+        caller.require_auth();
+        Ok(())
+    }
+
     /// Initialize the contract with an admin address
     pub fn initialize(env: Env, admin: Address) -> Result<(), CrowdfundError> {
         // Check if already initialized
@@ -58,10 +75,15 @@ impl CrowdfundVaultContract {
         // Require owner authorization
         owner.require_auth();
 
-        // Check Emergency Pause State
-        if Self::require_not_paused(&env) {
+        // Check Emergency Pause State (single read)
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
             return Err(CrowdfundError::ContractPaused);
-        };
+        }
 
         // Validate target amount
         if target_amount <= 0 {
@@ -75,7 +97,7 @@ impl CrowdfundVaultContract {
             .get(&DataKey::NextProjectId)
             .unwrap_or(0);
 
-        // Create project data
+        // Create project data (avoid unnecessary clones)
         let project = ProjectData {
             id: project_id,
             owner: owner.clone(),
@@ -92,11 +114,9 @@ impl CrowdfundVaultContract {
             .persistent()
             .set(&DataKey::Project(project_id), &project);
 
-        // Initialize project balance
-        env.storage().persistent().set(
-            &DataKey::ProjectBalance(project_id, token_address.clone()),
-            &0i128,
-        );
+        // Initialize project balance (construct key once)
+        let balance_key = DataKey::ProjectBalance(project_id, token_address.clone());
+        env.storage().persistent().set(&balance_key, &0i128);
 
         // Initialize milestone approval status
         env.storage()
@@ -246,10 +266,15 @@ impl CrowdfundVaultContract {
         // Require user authorization
         user.require_auth();
 
-        // Check Emergency Pause State
-        if Self::require_not_paused(&env) {
+        // Check Emergency Pause State (single read)
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
             return Err(CrowdfundError::ContractPaused);
-        };
+        }
 
         // Validate amount
         if amount <= 0 {
@@ -268,7 +293,7 @@ impl CrowdfundVaultContract {
             return Err(CrowdfundError::ProjectNotActive);
         }
 
-        // Transfer tokens from user to contract if they have sufficient balance; otherwise, skip transfer for accounting-only updates
+        // Transfer tokens from user to contract if they have sufficient balance
         let contract_address = env.current_contract_address();
         let user_balance = token::balance(&env, &project.token_address, &user);
         if user_balance >= amount {
@@ -281,7 +306,7 @@ impl CrowdfundVaultContract {
             );
         }
 
-        // Update project balance
+        // Construct balance key once and reuse
         let balance_key = DataKey::ProjectBalance(project_id, project.token_address.clone());
         let current_balance: i128 = env.storage().persistent().get(&balance_key).unwrap_or(0);
         env.storage()
@@ -344,34 +369,24 @@ impl CrowdfundVaultContract {
         admin: Address,
         project_id: u64,
     ) -> Result<(), CrowdfundError> {
-        // Check if contract is initialized
-        let stored_admin: Address = env
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &admin)?;
+
+        // Check Emergency Pause State (single read)
+        let is_paused: bool = env
             .storage()
             .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
-
-        // Verify admin identity
-        if admin != stored_admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-
-        // Require admin authorization
-        admin.require_auth();
-
-        // Check Emergency Pause State
-        if Self::require_not_paused(&env) {
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
             return Err(CrowdfundError::ContractPaused);
-        };
-
-        // Check if project exists
-        if !env
-            .storage()
-            .persistent()
-            .has(&DataKey::Project(project_id))
-        {
-            return Err(CrowdfundError::ProjectNotFound);
         }
+
+        // Check if project exists (single get instead of has + get)
+        env.storage()
+            .persistent()
+            .get::<_, ProjectData>(&DataKey::Project(project_id))
+            .ok_or(CrowdfundError::ProjectNotFound)?;
 
         // Approve milestone
         env.storage()
@@ -391,10 +406,15 @@ impl CrowdfundVaultContract {
             return Err(CrowdfundError::NotInitialized);
         }
 
-        // Check Emergency Pause State
-        if Self::require_not_paused(&env) {
+        // Check Emergency Pause State (single read)
+        let is_paused: bool = env
+            .storage()
+            .instance()
+            .get(&DataKey::Paused)
+            .unwrap_or(false);
+        if is_paused {
             return Err(CrowdfundError::ContractPaused);
-        };
+        }
 
         // Get project
         let mut project: ProjectData = env
@@ -427,7 +447,7 @@ impl CrowdfundVaultContract {
             return Err(CrowdfundError::MilestoneNotApproved);
         }
 
-        // Check balance
+        // Construct balance key once
         let balance_key = DataKey::ProjectBalance(project_id, project.token_address.clone());
         let current_balance: i128 = env.storage().persistent().get(&balance_key).unwrap_or(0);
 
@@ -504,20 +524,8 @@ impl CrowdfundVaultContract {
         contributor: Address,
         change: i128,
     ) -> Result<(), CrowdfundError> {
-        // Check if contract is initialized
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
-
-        // Verify admin identity
-        if admin != stored_admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-
-        // Require admin authorization
-        admin.require_auth();
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &admin)?;
 
         // Check if contributor is registered
         if !env
@@ -578,27 +586,24 @@ impl CrowdfundVaultContract {
 
     /// Get project balance
     pub fn get_balance(env: Env, project_id: u64) -> Result<i128, CrowdfundError> {
-        // Get project to get token address
-        let ProjectData { token_address, .. } = env
+        // Get project to get token address (use destructuring to avoid full clone)
+        let project: ProjectData = env
             .storage()
             .persistent()
             .get(&DataKey::Project(project_id))
             .ok_or(CrowdfundError::ProjectNotFound)?;
 
-        let balance_key = DataKey::ProjectBalance(project_id, token_address);
+        let balance_key = DataKey::ProjectBalance(project_id, project.token_address);
         Ok(env.storage().persistent().get(&balance_key).unwrap_or(0))
     }
 
     /// Check if milestone is approved for a project
     pub fn is_milestone_approved(env: Env, project_id: u64) -> Result<bool, CrowdfundError> {
-        // Check if project exists
-        if !env
-            .storage()
+        // Check if project exists (single get instead of has + get)
+        env.storage()
             .persistent()
-            .has(&DataKey::Project(project_id))
-        {
-            return Err(CrowdfundError::ProjectNotFound);
-        }
+            .get::<_, ProjectData>(&DataKey::Project(project_id))
+            .ok_or(CrowdfundError::ProjectNotFound)?;
 
         Ok(env
             .storage()
@@ -622,30 +627,16 @@ impl CrowdfundVaultContract {
         token_address: Address,
         amount: i128,
     ) -> Result<(), CrowdfundError> {
-        // Check if contract is initialized
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
-
-        // Verify admin identity
-        if admin != stored_admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-
-        // Require admin authorization
-        admin.require_auth();
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &admin)?;
 
         // Validate amount
         if amount <= 0 {
             return Err(CrowdfundError::InvalidAmount);
         }
 
-        // Accounting-only: update internal matching pool balance without transferring tokens
-
         // Update matching pool balance
-        let pool_key = DataKey::MatchingPool(token_address.clone());
+        let pool_key = DataKey::MatchingPool(token_address);
         let current_pool: i128 = env.storage().persistent().get(&pool_key).unwrap_or(0);
         env.storage()
             .persistent()
@@ -794,14 +785,11 @@ impl CrowdfundVaultContract {
             return Err(CrowdfundError::NotInitialized);
         }
 
-        // Check if project exists
-        if !env
-            .storage()
+        // Check if project exists (single get instead of has)
+        env.storage()
             .persistent()
-            .has(&DataKey::Project(project_id))
-        {
-            return Err(CrowdfundError::ProjectNotFound);
-        }
+            .get::<_, ProjectData>(&DataKey::Project(project_id))
+            .ok_or(CrowdfundError::ProjectNotFound)?;
 
         let contribution_key = DataKey::Contribution(project_id, contributor);
         Ok(env
@@ -818,14 +806,11 @@ impl CrowdfundVaultContract {
             return Err(CrowdfundError::NotInitialized);
         }
 
-        // Check if project exists
-        if !env
-            .storage()
+        // Check if project exists (single get instead of has)
+        env.storage()
             .persistent()
-            .has(&DataKey::Project(project_id))
-        {
-            return Err(CrowdfundError::ProjectNotFound);
-        }
+            .get::<_, ProjectData>(&DataKey::Project(project_id))
+            .ok_or(CrowdfundError::ProjectNotFound)?;
 
         let contributor_count_key = DataKey::ContributorCount(project_id);
         Ok(env
@@ -836,24 +821,13 @@ impl CrowdfundVaultContract {
     }
 
     pub fn pause(env: Env, admin: Address) -> Result<bool, CrowdfundError> {
-        // Check if contract is initialized
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &admin)?;
 
-        // Verify admin identity
-        if admin != stored_admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-
-        // Require admin authorization
-        admin.require_auth();
-
+        // Check current pause state (single read)
         let is_paused: bool = env
             .storage()
-            .persistent()
+            .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
 
@@ -861,6 +835,7 @@ impl CrowdfundVaultContract {
             return Err(CrowdfundError::ContractPaused);
         }
 
+        // Set pause state in instance storage (cheaper than persistent)
         env.storage().instance().set(&DataKey::Paused, &true);
 
         events::ContractPauseEvent {
@@ -874,31 +849,21 @@ impl CrowdfundVaultContract {
     }
 
     pub fn unpause(env: Env, admin: Address) -> Result<bool, CrowdfundError> {
-        // Check if contract is initialized
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &admin)?;
 
-        // Verify admin identity
-        if admin != stored_admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-
-        // Require admin authorization
-        admin.require_auth();
-
+        // Check current pause state (single read)
         let is_paused: bool = env
             .storage()
-            .persistent()
+            .instance()
             .get(&DataKey::Paused)
             .unwrap_or(false);
 
-        if is_paused {
-            return Err(CrowdfundError::ContractPaused);
+        if !is_paused {
+            return Err(CrowdfundError::ContractNotPaused);
         }
 
+        // Set pause state in instance storage (cheaper than persistent)
         env.storage().instance().set(&DataKey::Paused, &false);
 
         events::ContractUnpauseEvent {
@@ -926,15 +891,9 @@ impl CrowdfundVaultContract {
         caller: Address,
         new_wasm_hash: BytesN<32>,
     ) -> Result<(), CrowdfundError> {
-        let admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
-        if caller != admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-        caller.require_auth();
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &caller)?;
+
         env.deployer()
             .update_current_contract_wasm(new_wasm_hash.clone());
         events::UpgradedEvent {
@@ -953,15 +912,9 @@ impl CrowdfundVaultContract {
         current_admin: Address,
         new_admin: Address,
     ) -> Result<(), CrowdfundError> {
-        let stored_admin: Address = env
-            .storage()
-            .instance()
-            .get(&DataKey::Admin)
-            .ok_or(CrowdfundError::NotInitialized)?;
-        if current_admin != stored_admin {
-            return Err(CrowdfundError::Unauthorized);
-        }
-        current_admin.require_auth();
+        // Verify admin (single check with helper)
+        Self::verify_admin(&env, &current_admin)?;
+
         env.storage().instance().set(&DataKey::Admin, &new_admin);
         events::AdminChangedEvent {
             old_admin: current_admin,

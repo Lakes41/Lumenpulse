@@ -1,44 +1,69 @@
-import { View, Text, Button, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useAuth } from '../../src/context/AuthContext';
+import { useAuth } from '../../contexts/AuthContext';
+import { useTheme } from '../../contexts/ThemeContext';
 
 export default function Portfolio() {
-  const { user, loading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth();
+  const { colors } = useTheme();
   const router = useRouter();
 
-  if (loading) {
-    return <ActivityIndicator style={{ flex: 1 }} />;
+  if (isLoading) {
+    return (
+      <View style={[styles.center, { backgroundColor: colors.background }]}>
+        <ActivityIndicator color={colors.accent} size="large" />
+      </View>
+    );
   }
 
-  if (!user) {
+  if (!isAuthenticated) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: 'center',
-          alignItems: 'center',
-          padding: 20,
-        }}
-      >
-        <Text style={{ fontSize: 18, marginBottom: 20 }}>
+      <View style={[styles.center, { backgroundColor: colors.background, padding: 20 }]}>
+        <Text style={[styles.message, { color: colors.text }]}>
           Please login to view your portfolio.
         </Text>
-        <Button title="Go to Login" onPress={() => router.push('/login')} />
+        <TouchableOpacity
+          style={[styles.loginButton, { backgroundColor: colors.accentSecondary }]}
+          onPress={() => router.push('/auth/login')}
+        >
+          <Text style={styles.loginButtonText}>Go to Login</Text>
+        </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-      }}
-    >
-      <Text style={{ fontSize: 22, fontWeight: 'bold' }}>
+    <View style={[styles.center, { backgroundColor: colors.background }]}>
+      <Text style={[styles.heading, { color: colors.text }]}>
         Portfolio coming soon 🚀
       </Text>
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  center: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  message: {
+    fontSize: 18,
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  heading: {
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  loginButton: {
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  loginButtonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+});
