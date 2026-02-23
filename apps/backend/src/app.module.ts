@@ -1,4 +1,4 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, Logger } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -17,6 +17,9 @@ import databaseConfig from './database/database.config';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { TestController } from './test/test.controller';
 import { SnapshotsModule } from './snapshot/snapshot.module';
+import { DataSource, DataSourceOptions } from 'typeorm';
+
+const appLogger = new Logger('TypeORM');
 
 @Module({
   imports: [
@@ -26,7 +29,7 @@ import { SnapshotsModule } from './snapshot/snapshot.module';
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
-      useFactory: (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService): DataSourceOptions => ({
         type: 'postgres',
         host: configService.get<string>('DB_HOST'),
         port: configService.get<number>('DB_PORT'),
@@ -38,6 +41,15 @@ import { SnapshotsModule } from './snapshot/snapshot.module';
         migrations: [__dirname + '/migrations/*{.ts,.js}'],
         logging: true,
       }),
+      dataSourceFactory: async (options) => {
+        if (!options) {
+          throw new Error('TypeORM options are not defined');
+        }
+        const dataSource = new DataSource(options);
+        await dataSource.initialize();
+        appLogger.log('TypeORM Connection established');
+        return dataSource;
+      },
       inject: [ConfigService],
     }),
     ScheduleModule.forRoot(),
@@ -53,8 +65,6 @@ import { SnapshotsModule } from './snapshot/snapshot.module';
     UsersModule,
     EmailModule,
     PortfolioModule,
-    SnapshotsModule,
-    ScheduleModule.forRoot(),
     SnapshotsModule,
   ],
   controllers: [AppController, TestController, TestExceptionController],
