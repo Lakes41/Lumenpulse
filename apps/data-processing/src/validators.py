@@ -29,12 +29,13 @@ class NewsArticle(BaseModel):
             raise ValueError("published_at must be a non-empty string")
         return v
 
+
 class OnChainMetric(BaseModel):
     metric_id: str
     value: float
     timestamp: str  # ISO8601 string
     chain: str
-    extra: Optional[Any]
+    extra: Optional[Any] = None
 
     @validator("timestamp")
     def validate_timestamp(cls, v):
