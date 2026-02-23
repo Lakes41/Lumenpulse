@@ -17,11 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import {
-  Sanitize,
-  SanitizeTrim,
-  CustomSanitizer,
-} from './decorators/sanitize.decorator';
+import { Sanitize, CustomSanitizer } from './decorators/sanitize.decorator';
 
 /**
  * Example 1: Basic Registration DTO
@@ -151,7 +147,7 @@ export class ExampleMetadataArrayDto {
 
 /**
  * Example 5: Updating an Existing DTO to Add Sanitization
- * 
+ *
  * BEFORE:
  * export class LoginDto {
  *   @IsEmail()
@@ -163,7 +159,7 @@ export class ExampleMetadataArrayDto {
  *   @MinLength(6)
  *   password: string;
  * }
- * 
+ *
  * AFTER: Add @Sanitize() decorators where needed
  */
 export class ExampleUpdatedLoginDto {
@@ -180,7 +176,7 @@ export class ExampleUpdatedLoginDto {
 
 /**
  * Migration Guide:
- * 
+ *
  * 1. ADD @Sanitize() to string fields that contain user-generated content
  * 2. OPTIONAL: Use specific sanitizers like @SanitizeTrim() or @CustomSanitizer()
  * 3. NO CHANGES needed for:
@@ -191,7 +187,7 @@ export class ExampleUpdatedLoginDto {
  * 4. ENSURE validation still works after sanitization
  *    - Example: If you trim, @MinLength counts after trim
  * 5. TEST the updated DTOs with invalid inputs
- * 
+ *
  * This update is backward compatible - existing DTOs will automatically
  * benefi from the global sanitization pipe without changes.
  */

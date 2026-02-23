@@ -32,13 +32,15 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         typeof exceptionResponse === 'object' &&
         exceptionResponse
       ) {
-        const response = exceptionResponse as Record<string, any>;
+        const response = exceptionResponse as Record<string, unknown>;
 
         // Check if this is a validation error response from our CustomValidationPipe
         if (response.error === 'Validation Failed') {
+          const message: string | string[] =
+            (response.message as string | string[]) || 'Validation failed';
           errorResponse = {
             statusCode: status,
-            message: response.message || 'Validation failed',
+            message,
             error: 'ValidationError',
             timestamp,
             path: request.url,
@@ -46,7 +48,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         } else {
           // Standard HTTP exception
           const msg: string | string[] =
-            (response as Record<string, unknown>)['message']?.toString() ||
+            response['message']?.toString() ||
             httpException.message ||
             'Bad Request';
           errorResponse = {
@@ -64,13 +66,10 @@ export class GlobalExceptionFilter implements ExceptionFilter {
 
         if (Array.isArray(exceptionResponse) && exceptionResponse.length > 0) {
           msg = exceptionResponse;
-        } else if (
-          typeof exceptionResponse === 'object' &&
-          exceptionResponse
-        ) {
-          const msgFromResponse = (exceptionResponse as Record<string, unknown>)[
-            'message'
-          ] as string | undefined;
+        } else if (typeof exceptionResponse === 'object' && exceptionResponse) {
+          const msgFromResponse = (
+            exceptionResponse as Record<string, unknown>
+          )['message'] as string | undefined;
           msg = msgFromResponse || message;
         }
 

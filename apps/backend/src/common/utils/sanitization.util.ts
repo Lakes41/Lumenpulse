@@ -29,7 +29,7 @@ export function escapeHtml(str: string): string {
   if (!str || typeof str !== 'string') {
     return str;
   }
-  return str.replace(/[&<>"'\/]/g, (char) => HTML_ESCAPE_MAP[char]);
+  return str.replace(/[&<>"'/]/g, (char) => HTML_ESCAPE_MAP[char]);
 }
 
 /**
@@ -86,9 +86,9 @@ export function sanitizeString(str: string): string {
  * // Returns: { username: '&lt;script&gt;alert(&quot;xss&quot;)&lt;/script&gt;' }
  */
 export function sanitizeObject(
-  obj: any,
+  obj: unknown,
   sanitizer: (str: string) => string = sanitizeString,
-): any {
+): unknown {
   if (obj === null || obj === undefined) {
     return obj;
   }
@@ -102,10 +102,13 @@ export function sanitizeObject(
   }
 
   if (typeof obj === 'object') {
-    const sanitized: Record<string, any> = {};
+    const sanitized: Record<string, unknown> = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        sanitized[key] = sanitizeObject(obj[key], sanitizer);
+        sanitized[key] = sanitizeObject(
+          (obj as Record<string, unknown>)[key],
+          sanitizer,
+        );
       }
     }
     return sanitized;
@@ -121,7 +124,7 @@ export function sanitizeObject(
  * @param obj - Object to sanitize
  * @returns Object with string fields sanitized
  */
-export function sanitizeObjectStringsOnly(obj: any): any {
+export function sanitizeObjectStringsOnly(obj: unknown): unknown {
   if (obj === null || obj === undefined) {
     return obj;
   }
@@ -135,10 +138,10 @@ export function sanitizeObjectStringsOnly(obj: any): any {
   }
 
   if (typeof obj === 'object') {
-    const sanitized: Record<string, any> = {};
+    const sanitized: Record<string, unknown> = {};
     for (const key in obj) {
       if (Object.prototype.hasOwnProperty.call(obj, key)) {
-        const value = obj[key];
+        const value = (obj as Record<string, unknown>)[key];
         if (typeof value === 'string') {
           sanitized[key] = sanitizeString(value);
         } else if (value === null || value === undefined) {

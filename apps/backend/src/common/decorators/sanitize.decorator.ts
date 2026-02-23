@@ -27,7 +27,7 @@ import {
  * @returns Decorated property transformer
  */
 export function Sanitize(): PropertyDecorator {
-  return Transform(({ value }) => sanitizeString(value));
+  return Transform(({ value }) => sanitizeString(value as string));
 }
 
 /**
@@ -37,7 +37,7 @@ export function Sanitize(): PropertyDecorator {
  * @returns Decorated property transformer
  */
 export function SanitizeTrim(): PropertyDecorator {
-  return Transform(({ value }) => sanitizeTrim(value));
+  return Transform(({ value }) => sanitizeTrim(value as string));
 }
 
 /**
@@ -47,7 +47,7 @@ export function SanitizeTrim(): PropertyDecorator {
  * @returns Decorated property transformer
  */
 export function EscapeHtml(): PropertyDecorator {
-  return Transform(({ value }) => escapeHtml(value));
+  return Transform(({ value }) => escapeHtml(value as string));
 }
 
 /**
@@ -56,7 +56,7 @@ export function EscapeHtml(): PropertyDecorator {
  * @returns Decorated property transformer
  */
 export function RemoveNullBytes(): PropertyDecorator {
-  return Transform(({ value }) => removeNullBytes(value));
+  return Transform(({ value }) => removeNullBytes(value as string));
 }
 
 /**
@@ -79,6 +79,6 @@ export function CustomSanitizer(
     if (typeof value === 'string') {
       return sanitizer(value);
     }
-    return value;
+    return value as unknown;
   });
 }
