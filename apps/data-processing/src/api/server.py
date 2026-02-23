@@ -16,8 +16,8 @@ import os
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from sentiment import SentimentAnalyzer
-from utils.logger import setup_logger, correlation_id_ctx, generate_correlation_id
-from utils.metrics import API_FAILURES_TOTAL, generate_latest, CONTENT_TYPE_LATEST
+from src.utils.logger import setup_logger, correlation_id_ctx, generate_correlation_id
+from src.utils.metrics import API_FAILURES_TOTAL, generate_latest, CONTENT_TYPE_LATEST
 
 # Initialize structured logger
 logger = setup_logger(__name__)

@@ -2,8 +2,8 @@
 Job scheduler module - schedules and manages background jobs
 """
 
-from utils.logger import setup_logger
-from utils.metrics import JOBS_RUN_TOTAL
+from src.utils.logger import setup_logger
+from src.utils.metrics import JOBS_RUN_TOTAL
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger

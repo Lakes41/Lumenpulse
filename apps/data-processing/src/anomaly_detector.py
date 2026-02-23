@@ -4,8 +4,8 @@ using statistical methods (Z-Score) to identify outliers that deviate significan
 from baseline statistics.
 """
 
-from utils.logger import setup_logger
-from utils.metrics import ANOMALIES_DETECTED_TOTAL
+from src.utils.logger import setup_logger
+from src.utils.metrics import ANOMALIES_DETECTED_TOTAL
 from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime, timedelta
 from collections import deque
