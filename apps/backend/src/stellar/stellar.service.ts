@@ -2,6 +2,11 @@ import { Injectable, Logger, Inject } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import { Horizon, NetworkError, NotFoundError } from '@stellar/stellar-sdk';
 import { AccountBalancesDto, AssetBalanceDto } from './dto/balance.dto';
+import {
+  AssetDiscoveryQueryDto,
+  AssetDiscoveryResponseDto,
+  AssetDto,
+} from './dto/asset-discovery.dto';
 import stellarConfig, { StellarConfig } from './config/stellar.config';
 import {
   AccountNotFoundException,
@@ -160,6 +165,162 @@ export class StellarService {
 
       return assetBalance;
     });
+  }
+
+  /**
+   * Discovers Stellar assets based on search criteria
+   *
+   * @param query - Asset discovery query parameters
+   * @returns Promise<AssetDiscoveryResponseDto> - Asset discovery results with pagination
+   * @throws HorizonUnavailableException if Horizon API is unavailable
+   */
+  async discoverAssets(
+    query: AssetDiscoveryQueryDto,
+  ): Promise<AssetDiscoveryResponseDto> {
+    this.logger.debug(`Discovering assets with query:`, query);
+
+    try {
+      const limit = Math.min(query.limit || 10, 100); // Cap at 100 for safety
+      let assetsBuilder = this.server.assets();
+
+      // Apply filters based on query parameters
+      // Note: Stellar SDK doesn't support filtering by asset code alone
+      // We'll filter the results after fetching them
+      if (query.issuer) {
+        assetsBuilder = assetsBuilder.forIssuer(query.issuer);
+      }
+
+      // Apply cursor if provided
+      if (query.cursor) {
+        assetsBuilder = assetsBuilder.cursor(query.cursor);
+      }
+
+      // Apply limit
+      assetsBuilder = assetsBuilder.limit(limit);
+
+      // Execute the query with retry logic
+      const assetsResponse = await retryWithBackoff(
+        () => assetsBuilder.call(),
+        this.config.retryAttempts,
+        this.config.retryDelay,
+        (error) => {
+          // Retry on network errors and server errors
+          if (error instanceof NetworkError) {
+            return true;
+          }
+          const errorObj = error as { response?: { status?: number } };
+          const status = errorObj?.response?.status;
+          return status === undefined || status >= 500;
+        },
+      );
+
+      // Map results to DTOs
+      let assets = assetsResponse.records.map((record) =>
+        this.mapAssetToDto(record),
+      );
+
+      // Apply additional filtering if needed
+      if (query.assetCode && !query.issuer) {
+        const searchTerm = query.assetCode.toLowerCase();
+        assets = assets.filter(
+          (asset) => asset.assetCode.toLowerCase() === searchTerm,
+        );
+      }
+
+      // Filter by partial match if 'q' parameter is provided
+      if (query.q) {
+        const searchTerm = query.q.toLowerCase();
+        assets = assets.filter((asset) =>
+          asset.assetCode.toLowerCase().includes(searchTerm),
+        );
+      }
+
+      const response: AssetDiscoveryResponseDto = {
+        assets,
+        hasMore: !!assetsResponse.next,
+        nextCursor: assetsResponse.next
+          ? (assetsResponse.next as any).toString()
+          : undefined,
+      };
+
+      this.logger.log(
+        `Successfully discovered ${assets.length} asset(s) for query:`,
+        query,
+      );
+
+      return response;
+    } catch (error: unknown) {
+      return this.handleAssetDiscoveryError(error);
+    }
+  }
+
+  /**
+   * Maps Horizon asset records to DTOs
+   */
+  private mapAssetToDto(record: any): AssetDto {
+    const asset: AssetDto = {
+      assetCode: record.asset_code,
+      assetIssuer: record.asset_issuer,
+      assetType: record.asset_type,
+    };
+
+    // Add optional fields if present
+    if (record.num_accounts !== undefined) {
+      asset.numAccounts = record.num_accounts;
+    }
+
+    if (record.amount !== undefined) {
+      asset.totalSupply = record.amount;
+    }
+
+    if (record.flags) {
+      asset.flags = {
+        authRequired: !!record.flags.auth_required,
+        authRevocable: !!record.flags.auth_revocable,
+        authImmutable: !!record.flags.auth_immutable,
+      };
+    }
+
+    return asset;
+  }
+
+  /**
+   * Handles errors from asset discovery calls
+   */
+  private handleAssetDiscoveryError(error: unknown): never {
+    if (error instanceof NetworkError) {
+      this.logger.error(`Network error during asset discovery:`, error.message);
+      throw new HorizonUnavailableException(
+        this.config.horizonUrl,
+        error.message,
+      );
+    }
+
+    // Handle HTTP errors
+    const errorObj = error as {
+      response?: { status?: number };
+      message?: string;
+    };
+    const status = errorObj?.response?.status;
+
+    if (status && status >= 500) {
+      this.logger.error(
+        `Horizon API error (${status}) during asset discovery:`,
+        errorObj.message || 'Unknown error',
+      );
+      throw new HorizonUnavailableException(
+        this.config.horizonUrl,
+        `HTTP ${status}: ${errorObj.message || 'Server error'}`,
+      );
+    }
+
+    // Handle unknown errors
+    const errorMessage =
+      error instanceof Error ? error.message : 'Unknown error';
+
+    this.logger.error(`Unexpected error during asset discovery:`, errorMessage);
+
+    throw new HorizonUnavailableException(this.config.horizonUrl, errorMessage);
   }
 
   /**
