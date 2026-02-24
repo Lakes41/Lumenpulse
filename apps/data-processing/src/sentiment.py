@@ -7,15 +7,6 @@ from typing import List, Dict, Any
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 from dataclasses import dataclass
 
-# Import cache manager
-try:
-    from cache_manager import CacheManager
-
-    CACHE_AVAILABLE = True
-except ImportError:
-    CACHE_AVAILABLE = False
-    print("CacheManager not available, proceeding without caching")
-
 logger = logging.getLogger(__name__)
 
 
@@ -46,14 +37,18 @@ class SentimentAnalyzer:
 
     def __init__(self):
         self.analyzer = SentimentIntensityAnalyzer()
-        # Initialize cache manager if available
-        self.cache = None
-        if CACHE_AVAILABLE:
+        self.cache: object | None = None
+        try:
+            from cache_manager import CacheManager
+        except ImportError:
+            logger.info("CacheManager unavailable - sentiment caching disabled")
+        else:
             try:
                 self.cache = CacheManager(namespace="sentiment")
-                logger.info("Sentiment cache ready")
             except Exception as e:
-                logger.warning("Redis unavailable – sentiment caching disabled: %s", e)
+                logger.warning("Redis unavailable - sentiment caching disabled: %s", e)
+            else:
+                logger.info("Sentiment cache ready")
 
     def analyze(self, text: str) -> SentimentResult:
         """
