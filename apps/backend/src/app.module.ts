@@ -18,6 +18,7 @@ import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import { TestController } from './test/test.controller';
 import { SnapshotsModule } from './snapshot/snapshot.module';
 import { DataSource, DataSourceOptions } from 'typeorm';
+import stellarConfig from './stellar/config/stellar.config';
 
 const appLogger = new Logger('TypeORM');
 
@@ -25,7 +26,7 @@ const appLogger = new Logger('TypeORM');
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      load: [databaseConfig],
+      load: [databaseConfig, stellarConfig],
     }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],

@@ -5,7 +5,9 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   Index,
+  OneToMany,
 } from 'typeorm';
+import { StellarAccount } from './stellar-account.entity';
 
 export enum UserRole {
   USER = 'user',
@@ -49,6 +51,9 @@ export class User {
     default: UserRole.USER,
   })
   role: UserRole;
+
+  @OneToMany(() => StellarAccount, (stellarAccount) => stellarAccount.user)
+  stellarAccounts: StellarAccount[];
 
   @CreateDateColumn({ type: 'timestamptz' })
   createdAt: Date;
