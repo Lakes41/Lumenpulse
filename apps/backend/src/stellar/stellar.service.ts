@@ -1,11 +1,17 @@
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
-import { Horizon, NetworkError, NotFoundError } from '@stellar/stellar-sdk';
+import {
+  Horizon,
+  NetworkError,
+  NotFoundError,
+  StrKey,
+} from '@stellar/stellar-sdk';
 import { AccountBalancesDto, AssetBalanceDto } from './dto/balance.dto';
 import stellarConfig, { StellarConfig } from './config/stellar.config';
 import {
   AccountNotFoundException,
   HorizonUnavailableException,
+  InvalidPublicKeyException,
 } from './exceptions/stellar.exceptions';
 import { validateStellarPublicKey } from './utils/stellar-validator';
 import { retryWithBackoff } from './utils/retry.util';
@@ -29,6 +35,58 @@ export class StellarService {
   }
 
   /**
+   * Validates a Stellar public key format
+   * @param publicKey The public key to validate
+   * @returns boolean indicating if the key is valid
+   */
+  validatePublicKey(publicKey: string): boolean {
+    try {
+      return StrKey.isValidEd25519PublicKey(publicKey);
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Validates and throws an exception if invalid
+   * @param publicKey The public key to validate
+   * @throws InvalidPublicKeyException if the key is invalid
+   */
+  validatePublicKeyOrThrow(publicKey: string): void {
+    if (!this.validatePublicKey(publicKey)) {
+      throw new InvalidPublicKeyException(publicKey);
+    }
+  }
+
+  /**
+   * Gets basic account info without balances (lightweight)
+   * @param publicKey The Stellar public key
+   * @returns Account exists or not
+   */
+  async accountExists(publicKey: string): Promise<boolean> {
+    try {
+      this.validatePublicKeyOrThrow(publicKey);
+      await this.server.loadAccount(publicKey);
+      return true;
+    } catch (error) {
+      if (
+        error instanceof NotFoundError ||
+        error instanceof InvalidPublicKeyException
+      ) {
+        return false;
+      }
+
+      const errorMessage =
+        error instanceof Error ? error.message : 'Unknown error';
+
+      this.logger.debug(
+        `Error checking account existence for ${publicKey}: ${errorMessage}`,
+      );
+      return false;
+    }
+  }
+
+  /**
    * Fetches account balances from Stellar Horizon API
    *
    * @param publicKey - Stellar account public key (must be valid Ed25519 public key)
@@ -49,22 +107,24 @@ export class StellarService {
         () => this.server.loadAccount(publicKey),
         this.config.retryAttempts,
         this.config.retryDelay,
-        (error) => {
-          // Retry on network errors, but not on 404 (account not found)
+        (error: unknown) => {
           if (error instanceof NetworkError) {
             return true;
           }
           if (error instanceof NotFoundError) {
-            return false; // Don't retry 404 errors
+            return false;
           }
-          // Check for network-related errors
-          const errorObj = error as { response?: { status?: number } };
+
+          interface ErrorWithResponse {
+            response?: { status?: number };
+          }
+
+          const errorObj = error as ErrorWithResponse;
           const status = errorObj?.response?.status;
           return status !== 404 && (status === undefined || status >= 500);
         },
       );
 
-      // Map balances to DTO
       const balances = this.mapBalancesToDto(account.balances);
 
       const result: AccountBalancesDto = {
@@ -84,6 +144,33 @@ export class StellarService {
   }
 
   /**
+   * Gets account information with balances (alias for getAccountBalances for backward compatibility)
+   * @param publicKey The Stellar public key
+   * @returns Account information or null if not found
+   */
+  async getAccountInfo(publicKey: string): Promise<AccountBalancesDto | null> {
+    try {
+      return await this.getAccountBalances(publicKey);
+    } catch (error: unknown) {
+      // Return null for expected errors, throw for unexpected ones
+      if (
+        error instanceof AccountNotFoundException ||
+        error instanceof InvalidPublicKeyException
+      ) {
+        return null;
+      }
+      // For Horizon unavailability, log and return null instead of throwing
+      if (error instanceof HorizonUnavailableException) {
+        this.logger.warn(
+          `Horizon unavailable when fetching account ${publicKey}`,
+        );
+        return null;
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Checks if Horizon API is available and responsive
    * @returns Promise<boolean> - true if Horizon is available
    */
@@ -92,10 +179,10 @@ export class StellarService {
       // Try to fetch the root endpoint
       await this.server.root();
       return true;
-    } catch (error) {
-      this.logger.warn(
-        `Horizon health check failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
+    } catch (error: unknown) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Horizon health check failed: ${errorMessage}`);
       return false;
     }
   }
@@ -118,43 +205,31 @@ export class StellarService {
         balance: balance.balance,
       };
 
-      // Add asset code and issuer for credit assets (single check)
       if (isCreditAsset) {
-        assetBalance.assetCode = (
-          balance as Horizon.HorizonApi.BalanceLineAsset
-        ).asset_code;
-        assetBalance.assetIssuer = (
-          balance as Horizon.HorizonApi.BalanceLineAsset
-        ).asset_issuer;
+        const creditBalance = balance as Horizon.HorizonApi.BalanceLineAsset;
+        assetBalance.assetCode = creditBalance.asset_code;
+        assetBalance.assetIssuer = creditBalance.asset_issuer;
       }
 
-      // Add optional fields if present (only for non-liquidity pool balances)
       if (!isLiquidityPool) {
-        if (
-          'limit' in balance &&
-          (balance as Horizon.HorizonApi.BalanceLineAsset).limit
-        ) {
-          assetBalance.limit = (
-            balance as Horizon.HorizonApi.BalanceLineAsset
-          ).limit;
+        const creditBalance = balance as Horizon.HorizonApi.BalanceLineAsset;
+
+        if ('limit' in balance && creditBalance.limit) {
+          assetBalance.limit = creditBalance.limit;
         }
 
         if (
           'buying_liabilities' in balance &&
-          (balance as Horizon.HorizonApi.BalanceLineAsset).buying_liabilities
+          creditBalance.buying_liabilities
         ) {
-          assetBalance.buyingLiabilities = (
-            balance as Horizon.HorizonApi.BalanceLineAsset
-          ).buying_liabilities;
+          assetBalance.buyingLiabilities = creditBalance.buying_liabilities;
         }
 
         if (
           'selling_liabilities' in balance &&
-          (balance as Horizon.HorizonApi.BalanceLineAsset).selling_liabilities
+          creditBalance.selling_liabilities
         ) {
-          assetBalance.sellingLiabilities = (
-            balance as Horizon.HorizonApi.BalanceLineAsset
-          ).selling_liabilities;
+          assetBalance.sellingLiabilities = creditBalance.selling_liabilities;
         }
       }
 
@@ -184,11 +259,12 @@ export class StellarService {
       );
     }
 
-    // Handle HTTP errors (check once)
-    const errorObj = error as {
+    interface ErrorWithResponse {
       response?: { status?: number };
       message?: string;
-    };
+    }
+
+    const errorObj = error as ErrorWithResponse;
     const status = errorObj?.response?.status;
 
     if (status === 404) {
@@ -197,17 +273,17 @@ export class StellarService {
     }
 
     if (status && status >= 500) {
+      const errorMessage = errorObj.message || 'Unknown error';
       this.logger.error(
         `Horizon API error (${status}) for account ${publicKey}:`,
-        errorObj.message || 'Unknown error',
+        errorMessage,
       );
       throw new HorizonUnavailableException(
         this.config.horizonUrl,
-        `HTTP ${status}: ${errorObj.message || 'Server error'}`,
+        `HTTP ${status}: ${errorMessage}`,
       );
     }
 
-    // Handle unknown errors (fallback)
     const errorMessage =
       error instanceof Error ? error.message : 'Unknown error';
     const errorStack = error instanceof Error ? error.stack : String(error);
