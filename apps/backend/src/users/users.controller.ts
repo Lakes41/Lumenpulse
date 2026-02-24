@@ -1,10 +1,27 @@
-import { Controller, Get, Param, Patch, Body, Request, UseGuards, UsePipes } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Body,
+  Request,
+  UseGuards,
+  UsePipes,
+} from '@nestjs/common';
 import { ValidationPipe } from '@nestjs/common';
 import { UsersService } from './users.service';
 import { User } from './entities/user.entity';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ProfileResponseDto } from './dto/profile-response.dto';
+
+interface AuthenticatedRequest extends Request {
+  user: {
+    id: string;
+    email: string;
+    [key: string]: any;
+  };
+}
 
 @Controller('users')
 @UseGuards(JwtAuthGuard)
@@ -22,14 +39,16 @@ export class UsersController {
   }
 
   @Get('me')
-  async getProfile(@Request() req: any): Promise<ProfileResponseDto> {
+  async getProfile(
+    @Request() req: AuthenticatedRequest,
+  ): Promise<ProfileResponseDto> {
     const userId = req.user.id;
     const user = await this.usersService.findById(userId);
-    
+
     if (!user) {
       throw new Error('User not found');
     }
-    
+
     return new ProfileResponseDto({
       id: user.id,
       email: user.email,
@@ -47,11 +66,11 @@ export class UsersController {
   @Patch('me')
   @UsePipes(new ValidationPipe())
   async updateProfile(
-    @Request() req: any,
+    @Request() req: AuthenticatedRequest,
     @Body() updateProfileDto: UpdateProfileDto,
   ): Promise<ProfileResponseDto> {
     const userId = req.user.id;
-    
+
     // Only allow updating specific fields (strict DTO)
     const allowedUpdates: Partial<User> = {};
     if (updateProfileDto.displayName !== undefined) {
@@ -63,12 +82,15 @@ export class UsersController {
     if (updateProfileDto.avatarUrl !== undefined) {
       allowedUpdates.avatarUrl = updateProfileDto.avatarUrl;
     }
-    
+
     // Ensure password cannot be updated via this endpoint
-    delete (allowedUpdates as any).passwordHash;
-    
-    const updatedUser = await this.usersService.update(userId, allowedUpdates);
-    
+    // passwordHash is not included in the DTO, so it won't be in allowedUpdates
+    // This is a safety check in case the DTO is modified
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { passwordHash: _, ...safeUpdates } = allowedUpdates;
+
+    const updatedUser = await this.usersService.update(userId, safeUpdates);
+
     return new ProfileResponseDto({
       id: updatedUser.id,
       email: updatedUser.email,
