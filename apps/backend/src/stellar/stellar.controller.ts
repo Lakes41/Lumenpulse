@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Param,
+  Query,
   HttpCode,
   HttpStatus,
   BadRequestException,
@@ -9,6 +10,10 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { StellarService } from './stellar.service';
 import { AccountBalancesDto } from './dto/balance.dto';
+import {
+  AssetDiscoveryQueryDto,
+  AssetDiscoveryResponseDto,
+} from './dto/asset-discovery.dto';
 import { Inject } from '@nestjs/common';
 import type { ConfigType } from '@nestjs/config';
 import stellarConfig from './config/stellar.config';
@@ -93,5 +98,32 @@ export class StellarController {
       horizonUrl: this.config.horizonUrl,
       network: this.config.network,
     };
+  }
+
+  @Get('assets')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Discover Stellar assets',
+    description:
+      'Search for Stellar assets by code, issuer, or partial match with pagination support',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Assets discovered successfully',
+    type: AssetDiscoveryResponseDto,
+  })
+  @ApiResponse({
+    status: 400,
+    description: 'Bad request - invalid query parameters',
+  })
+  @ApiResponse({
+    status: 503,
+    description: 'Horizon API is unavailable',
+  })
+  async discoverAssets(
+    @Query() query: AssetDiscoveryQueryDto,
+  ): Promise<AssetDiscoveryResponseDto> {
+    // Service handles all exceptions and throws appropriate HttpExceptions
+    return this.stellarService.discoverAssets(query);
   }
 }
